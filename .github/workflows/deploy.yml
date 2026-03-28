@@ -1,0 +1,72 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-backend:
+    name: Deploy Backend
+    runs-on: ubuntu-latest
+    if: |
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        secrets.BACKEND_DEPLOY_HOOK_URL != ''
+      ) || (
+        github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/main' &&
+        secrets.BACKEND_DEPLOY_HOOK_URL != ''
+      )
+    steps:
+      - name: Trigger backend deploy hook
+        env:
+          BACKEND_DEPLOY_HOOK_URL: ${{ secrets.BACKEND_DEPLOY_HOOK_URL }}
+        run: |
+          curl --fail --silent --show-error --location --request POST "$BACKEND_DEPLOY_HOOK_URL"
+
+  deploy-frontend:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+    if: |
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        secrets.FRONTEND_DEPLOY_HOOK_URL != ''
+      ) || (
+        github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/main' &&
+        secrets.FRONTEND_DEPLOY_HOOK_URL != ''
+      )
+    steps:
+      - name: Trigger frontend deploy hook
+        env:
+          FRONTEND_DEPLOY_HOOK_URL: ${{ secrets.FRONTEND_DEPLOY_HOOK_URL }}
+        run: |
+          curl --fail --silent --show-error --location --request POST "$FRONTEND_DEPLOY_HOOK_URL"
+
+  deployment-summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [deploy-backend, deploy-frontend]
+    if: always()
+    steps:
+      - name: Print deployment results
+        run: |
+          echo "Backend deploy job:  ${{ needs.deploy-backend.result }}"
+          echo "Frontend deploy job: ${{ needs.deploy-frontend.result }}"
+          if [ "${{ needs.deploy-backend.result }}" = "skipped" ] || [ "${{ needs.deploy-frontend.result }}" = "skipped" ]; then
+            echo "One or more deploy hooks are missing."
+            echo "Add GitHub secrets BACKEND_DEPLOY_HOOK_URL and FRONTEND_DEPLOY_HOOK_URL to enable full auto-deploy."
+          fi
