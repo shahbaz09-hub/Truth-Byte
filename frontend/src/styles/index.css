@@ -1,0 +1,73 @@
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+
+/* Custom animations for TruthByte */
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(0, 245, 255, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(0, 245, 255, 0.6);
+  }
+}
+
+@keyframes border-trace {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Font utilities */
+.font-outfit {
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 245, 255, 0.3);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 245, 255, 0.5);
+}
+
+/* Selection styling */
+::selection {
+  background: rgba(0, 245, 255, 0.3);
+  color: white;
+}

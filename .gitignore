@@ -1,0 +1,21 @@
+# Node / frontend
+node_modules/
+dist/
+
+# Environment files
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+
+# Java / Maven backend
+backend/target/
+backend/.mvn/
+
+# IDE / OS
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db

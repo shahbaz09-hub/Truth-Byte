@@ -1,0 +1,159 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-size: 16px;
+  
+  /* TruthByte Dark Theme Colors */
+  --deep-black: #0A0A0F;
+  --midnight-navy: #080B1A;
+  --electric-cyan: #00F5FF;
+  --amber: #FFB800;
+  --crimson: #FF2D55;
+  
+  /* Background colors */
+  --background: var(--deep-black);
+  --foreground: #ffffff;
+  --card: rgba(255, 255, 255, 0.03);
+  --card-foreground: #ffffff;
+  --popover: rgba(8, 11, 26, 0.98);
+  --popover-foreground: #ffffff;
+  
+  /* Primary colors */
+  --primary: var(--electric-cyan);
+  --primary-foreground: var(--deep-black);
+  --secondary: var(--midnight-navy);
+  --secondary-foreground: #ffffff;
+  
+  /* Muted colors */
+  --muted: rgba(255, 255, 255, 0.1);
+  --muted-foreground: rgba(255, 255, 255, 0.6);
+  
+  /* Accent colors */
+  --accent: var(--electric-cyan);
+  --accent-foreground: var(--deep-black);
+  
+  /* Destructive colors */
+  --destructive: var(--crimson);
+  --destructive-foreground: #ffffff;
+  
+  /* Border and input */
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.05);
+  --input-background: rgba(255, 255, 255, 0.03);
+  --ring: var(--electric-cyan);
+  
+  /* Chart colors */
+  --chart-1: var(--electric-cyan);
+  --chart-2: var(--amber);
+  --chart-3: var(--crimson);
+  --chart-4: #7B61FF;
+  --chart-5: #00FF88;
+  
+  /* Radius */
+  --radius: 0.5rem;
+  
+  /* Font weights */
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  
+  /* Custom TruthByte colors */
+  --color-deep-black: var(--deep-black);
+  --color-midnight-navy: var(--midnight-navy);
+  --color-electric-cyan: var(--electric-cyan);
+  --color-amber: var(--amber);
+  --color-crimson: var(--crimson);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-[var(--deep-black)] text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  html {
+    font-size: var(--font-size);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Bebas Neue', cursive;
+    letter-spacing: 0.05em;
+  }
+
+  h1 {
+    font-size: 4rem;
+    line-height: 1.1;
+  }
+
+  h2 {
+    font-size: 3rem;
+    line-height: 1.2;
+  }
+
+  h3 {
+    font-size: 2rem;
+    line-height: 1.3;
+  }
+
+  h4 {
+    font-size: 1.5rem;
+    line-height: 1.4;
+  }
+
+  .font-mono {
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  label {
+    font-size: 0.875rem;
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  button {
+    font-size: 1rem;
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  input {
+    font-size: 1rem;
+    font-weight: var(--font-weight-normal);
+    line-height: 1.5;
+  }
+}
