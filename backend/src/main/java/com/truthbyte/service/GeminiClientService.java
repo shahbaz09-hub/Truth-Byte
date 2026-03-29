@@ -40,7 +40,7 @@ public class GeminiClientService {
                         @Value("${truthbyte.ai.gemini.request-timeout-ms:25000}") long requestTimeoutMs,
                         @Value("${truthbyte.ai.gemini.retry-count:2}") long retryCount,
                         @Value("${truthbyte.ai.gemini.retry-delay-ms:1200}") long retryDelayMs,
-                        @Value("${truthbyte.ai.gemini.max-output-tokens:512}") Integer maxOutputTokens
+                        @Value("${truthbyte.ai.gemini.max-output-tokens:1024}") Integer maxOutputTokens
         ) {
                 this.webClient = webClientBuilder
                                 .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
@@ -50,7 +50,8 @@ public class GeminiClientService {
                 this.requestTimeout = Duration.ofMillis(Math.max(1000, requestTimeoutMs));
                 this.retryCount = Math.max(0, retryCount);
                 this.retryDelay = Duration.ofMillis(Math.max(100, retryDelayMs));
-                this.maxOutputTokens = maxOutputTokens != null && maxOutputTokens > 0 ? maxOutputTokens : null;
+                int configuredTokens = (maxOutputTokens != null && maxOutputTokens > 0) ? maxOutputTokens : 1024;
+                this.maxOutputTokens = Math.max(768, configuredTokens);
         }
 
         public Mono<String> generateContent(String systemInstruction, String userMessage) {
@@ -69,7 +70,7 @@ public class GeminiClientService {
                                                 .parts(List.of(GeminiRequest.Part.builder().text(userMessage).build()))
                                                 .build()))
                                 .generationConfig(GeminiRequest.GenerationConfig.builder()
-                                                .temperature(0.3)
+                                                .temperature(0.1)
                                                 .responseMimeType("application/json")
                                                 .maxOutputTokens(maxOutputTokens)
                                                 .build())

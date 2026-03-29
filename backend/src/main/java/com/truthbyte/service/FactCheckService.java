@@ -16,10 +16,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -110,18 +113,27 @@ public class FactCheckService {
             logger.warn("Malformed AI JSON on first attempt. Retrying once with stricter JSON prompt. Error: {}",
                     firstParseError.getOriginalMessage());
 
+            String recoveryRawText = rawJsonBlock;
             String retryRawJson;
             try {
                 retryRawJson = geminiClient
                         .generateContent(SYSTEM_PROMPT + "\n" + STRICT_JSON_RETRY_APPENDIX,
                                 "Fact-check this claim: \"" + claimText + "\"")
                         .block();
+                recoveryRawText = retryRawJson;
                 aiResponse = parseClaimResponse(retryRawJson);
             } catch (Exception retryError) {
                 if (fallbackOnQuota && isGeminiUnavailable(retryError)) {
                     logger.warn("Gemini unavailable during strict retry. Returning quota fallback response for claim.");
                     return buildQuotaFallbackClaim(claimText);
                 }
+
+                ClaimResponse recovered = tryRecoverClaimResponse(recoveryRawText, claimText);
+                if (recovered != null) {
+                    logger.warn("Recovered fact-check from malformed AI output after strict retry failed.");
+                    return recovered;
+                }
+
                 logger.warn("AI returned malformed output after retry. Returning malformed-response fallback. Error: {}",
                         retryError.getMessage());
                 return buildMalformedFallbackClaim(claimText);
@@ -293,5 +305,132 @@ public class FactCheckService {
                 .claimText(claimText)
                 .createdAt(LocalDateTime.now())
                 .build();
+    }
+
+    private ClaimResponse tryRecoverClaimResponse(String rawResponse, String claimText) {
+        String cleaned = sanitizeAiJson(rawResponse);
+        if (cleaned.isBlank()) {
+            return null;
+        }
+
+        String verdict = extractVerdict(cleaned);
+        Double confidence = extractConfidence(cleaned);
+        String summary = extractQuotedField(cleaned, "summary");
+        List<String> keyPoints = extractQuotedArray(cleaned, "keyPoints");
+        List<String> sources = extractQuotedArray(cleaned, "sources");
+
+        if (verdict == null && summary == null && keyPoints.isEmpty() && sources.isEmpty()) {
+            return null;
+        }
+
+        List<String> defaultKeyPoints = List.of(
+                "AI response format was partially malformed and has been recovered.",
+                "Treat this result as a provisional automated assessment.",
+                "Cross-check the claim with trusted fact-check outlets.",
+                "Retry the same claim if you need a cleaner model response."
+        );
+        List<String> defaultSources = List.of(
+                "Reuters Fact Check",
+                "AP Fact Check",
+                "Snopes",
+                "PolitiFact"
+        );
+
+        String safeVerdict = verdict != null ? verdict : "MISLEADING";
+        Double safeConfidence = confidence != null ? confidence : 62.0;
+        String safeSummary = (summary != null && !summary.isBlank())
+                ? summary
+                : "AI output was partially recovered from malformed JSON. Verify this claim with trusted sources.";
+
+        return ClaimResponse.builder()
+                .verdict(safeVerdict)
+                .confidence(safeConfidence)
+                .summary(safeSummary)
+                .keyPoints(normalizeList(keyPoints, defaultKeyPoints, 4))
+                .sources(normalizeList(sources, defaultSources, 4))
+                .claimText(claimText)
+                .createdAt(LocalDateTime.now())
+                .build();
+    }
+
+    private String extractVerdict(String raw) {
+        Matcher matcher = Pattern.compile("\\b(TRUE|FALSE|MISLEADING)\\b", Pattern.CASE_INSENSITIVE).matcher(raw);
+        if (!matcher.find()) {
+            return null;
+        }
+        return matcher.group(1).toUpperCase();
+    }
+
+    private Double extractConfidence(String raw) {
+        Matcher matcher = Pattern.compile("\"confidence\"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)", Pattern.CASE_INSENSITIVE)
+                .matcher(raw);
+        if (!matcher.find()) {
+            return null;
+        }
+
+        try {
+            double parsed = Double.parseDouble(matcher.group(1));
+            return Math.max(0.0, Math.min(100.0, parsed));
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private String extractQuotedField(String raw, String field) {
+        String regex = "\\\"" + Pattern.quote(field) + "\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"";
+        Matcher matcher = Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(raw);
+        if (!matcher.find()) {
+            return null;
+        }
+
+        String value = matcher.group(1);
+        return value != null ? value.trim() : null;
+    }
+
+    private List<String> extractQuotedArray(String raw, String field) {
+        String regex = "\\\"" + Pattern.quote(field) + "\\\"\\s*:\\s*\\[(.*?)]";
+        Matcher blockMatcher = Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(raw);
+        if (!blockMatcher.find()) {
+            return List.of();
+        }
+
+        String block = blockMatcher.group(1);
+        if (block == null || block.isBlank()) {
+            return List.of();
+        }
+
+        List<String> values = new ArrayList<>();
+        Matcher valueMatcher = Pattern.compile("\\\"([^\\\"]+)\\\"").matcher(block);
+        while (valueMatcher.find()) {
+            String value = valueMatcher.group(1);
+            if (value != null && !value.isBlank()) {
+                values.add(value.trim());
+            }
+        }
+        return values;
+    }
+
+    private List<String> normalizeList(List<String> parsedValues, List<String> defaultValues, int expectedSize) {
+        List<String> normalized = new ArrayList<>();
+
+        if (parsedValues != null) {
+            for (String value : parsedValues) {
+                if (value != null && !value.isBlank()) {
+                    normalized.add(value.trim());
+                }
+                if (normalized.size() == expectedSize) {
+                    break;
+                }
+            }
+        }
+
+        for (String fallback : defaultValues) {
+            if (normalized.size() == expectedSize) {
+                break;
+            }
+            normalized.add(fallback);
+        }
+
+        return normalized;
     }
 }
