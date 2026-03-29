@@ -1,7 +1,9 @@
 package com.truthbyte.dto.gemini;
 
 import lombok.Data;
+
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Data
 public class GeminiResponse {
@@ -23,11 +25,16 @@ public class GeminiResponse {
     }
 
     public String getExtractedText() {
-        if (candidates != null && !candidates.isEmpty() 
-            && candidates.get(0).getContent() != null 
-            && candidates.get(0).getContent().getParts() != null
-            && !candidates.get(0).getContent().getParts().isEmpty()) {
-            return candidates.get(0).getContent().getParts().get(0).getText();
+        if (candidates != null
+                && !candidates.isEmpty()
+                && candidates.get(0).getContent() != null
+                && candidates.get(0).getContent().getParts() != null
+                && !candidates.get(0).getContent().getParts().isEmpty()) {
+            String combined = candidates.get(0).getContent().getParts().stream()
+                    .map(Part::getText)
+                    .filter(text -> text != null && !text.isBlank())
+                    .collect(Collectors.joining());
+            return combined.isBlank() ? null : combined;
         }
         return null;
     }

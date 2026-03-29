@@ -56,6 +56,13 @@ public class FactCheckService {
         - DO NOT include markdown formatting like ```json in the output. Just return the raw JSON.
         """;
 
+    private static final String STRICT_JSON_RETRY_APPENDIX = """
+        CRITICAL OUTPUT RULES (must follow exactly):
+        - Return ONLY one valid JSON object.
+        - Close all quotes and braces.
+        - Do not include markdown, explanation, or extra text.
+        """;
+
     @Transactional
     public ClaimResponse verifyClaim(String claimText, UUID userId) {
         logger.info("Verifying claim for userId: {}", userId);
@@ -95,21 +102,39 @@ public class FactCheckService {
             throw new AiServiceException("Failed to get response from AI service: " + e.getMessage(), e);
         }
 
-        // Clean markdown if Gemini accidentally included it
-        if (rawJsonBlock != null && rawJsonBlock.startsWith("```json")) {
-            rawJsonBlock = rawJsonBlock.replace("```json", "").replace("```", "").trim();
+        // 3. Parse JSON with recovery (sanitize/extract + one strict retry)
+        ClaimResponse aiResponse;
+        try {
+            aiResponse = parseClaimResponse(rawJsonBlock);
+        } catch (JsonProcessingException firstParseError) {
+            logger.warn("Malformed AI JSON on first attempt. Retrying once with stricter JSON prompt. Error: {}",
+                    firstParseError.getOriginalMessage());
+
+            String retryRawJson;
+            try {
+                retryRawJson = geminiClient
+                        .generateContent(SYSTEM_PROMPT + "\n" + STRICT_JSON_RETRY_APPENDIX,
+                                "Fact-check this claim: \"" + claimText + "\"")
+                        .block();
+                aiResponse = parseClaimResponse(retryRawJson);
+            } catch (Exception retryError) {
+                if (fallbackOnQuota && isGeminiUnavailable(retryError)) {
+                    logger.warn("Gemini unavailable during strict retry. Returning quota fallback response for claim.");
+                    return buildQuotaFallbackClaim(claimText);
+                }
+                logger.warn("AI returned malformed output after retry. Returning malformed-response fallback. Error: {}",
+                        retryError.getMessage());
+                return buildMalformedFallbackClaim(claimText);
+            }
+        }
+
+        // 4. Resolve User within transaction and save
+        User user = null;
+        if (userId != null) {
+            user = userRepository.findById(userId).orElse(null);
         }
 
         try {
-            // 3. Parse JSON
-            ClaimResponse aiResponse = objectMapper.readValue(rawJsonBlock, ClaimResponse.class);
-
-            // 4. Resolve User within transaction and save
-            User user = null;
-            if (userId != null) {
-                user = userRepository.findById(userId).orElse(null);
-            }
-
             FactCheck newCheck = FactCheck.builder()
                     .user(user)
                     .claimText(claimText)
@@ -127,7 +152,7 @@ public class FactCheckService {
             aiResponse.setCreatedAt(newCheck.getCreatedAt());
             return aiResponse;
         } catch (JsonProcessingException e) {
-            throw new AiServiceException("Failed to parse AI response for fact-check: " + e.getMessage(), e);
+            throw new AiServiceException("Failed to serialize fact-check response for persistence: " + e.getMessage(), e);
         }
     }
 
@@ -216,6 +241,54 @@ public class FactCheckService {
                         "Backend service logs",
                         "Configured API key project usage",
                 "Retry with a valid key"
+                ))
+                .claimText(claimText)
+                .createdAt(LocalDateTime.now())
+                .build();
+    }
+
+    private ClaimResponse parseClaimResponse(String rawJsonBlock) throws JsonProcessingException {
+        String cleaned = sanitizeAiJson(rawJsonBlock);
+        return objectMapper.readValue(cleaned, ClaimResponse.class);
+    }
+
+    private String sanitizeAiJson(String rawJsonBlock) {
+        if (rawJsonBlock == null) {
+            return "";
+        }
+
+        String cleaned = rawJsonBlock.trim();
+        if (cleaned.startsWith("```json")) {
+            cleaned = cleaned.replace("```json", "").replace("```", "").trim();
+        } else if (cleaned.startsWith("```")) {
+            cleaned = cleaned.replace("```", "").trim();
+        }
+
+        int firstBrace = cleaned.indexOf('{');
+        int lastBrace = cleaned.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+            cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+        }
+
+        return cleaned.trim();
+    }
+
+    private ClaimResponse buildMalformedFallbackClaim(String claimText) {
+        return ClaimResponse.builder()
+                .verdict("MISLEADING")
+                .confidence(0.0)
+                .summary("AI returned an incomplete response for this claim. Please retry once; if it persists, check backend logs and Gemini limits.")
+                .keyPoints(List.of(
+                        "The model output was truncated or not valid JSON.",
+                        "A strict retry was attempted but still failed.",
+                        "Please retry the claim once after a short wait.",
+                        "Use trusted sources before taking action."
+                ))
+                .sources(List.of(
+                        "Backend service logs",
+                        "Gemini API response traces",
+                        "Google AI Studio usage dashboard",
+                        "Trusted fact-check organizations"
                 ))
                 .claimText(claimText)
                 .createdAt(LocalDateTime.now())
