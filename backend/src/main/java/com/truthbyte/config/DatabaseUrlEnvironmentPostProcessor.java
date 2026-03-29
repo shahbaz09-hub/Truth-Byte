@@ -19,9 +19,15 @@ public class DatabaseUrlEnvironmentPostProcessor implements EnvironmentPostProce
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
         String rawDatabaseUrl = firstNonBlank(
+            environment.getProperty("SPRING_DATASOURCE_URL"),
             environment.getProperty("DATABASE_URL"),
+            environment.getProperty("JDBC_DATABASE_URL"),
             environment.getProperty("DB_URL")
         );
+
+        if (isBlank(rawDatabaseUrl)) {
+            rawDatabaseUrl = buildUrlFromParts(environment);
+        }
 
         if (isBlank(rawDatabaseUrl)) {
             return;
@@ -38,14 +44,16 @@ public class DatabaseUrlEnvironmentPostProcessor implements EnvironmentPostProce
             String passwordFromUrl = userInfo.length > 1 ? userInfo[1] : null;
 
             String configuredUser = firstNonBlank(
-                    environment.getProperty("DATABASE_USERNAME"),
-                    environment.getProperty("DB_USERNAME"),
-                    environment.getProperty("spring.datasource.username")
+                environment.getProperty("SPRING_DATASOURCE_USERNAME"),
+                environment.getProperty("DATABASE_USERNAME"),
+                environment.getProperty("PGUSER"),
+                environment.getProperty("DB_USERNAME")
             );
             String configuredPassword = firstNonBlank(
-                    environment.getProperty("DATABASE_PASSWORD"),
-                    environment.getProperty("DB_PASSWORD"),
-                    environment.getProperty("spring.datasource.password")
+                environment.getProperty("SPRING_DATASOURCE_PASSWORD"),
+                environment.getProperty("DATABASE_PASSWORD"),
+                environment.getProperty("PGPASSWORD"),
+                environment.getProperty("DB_PASSWORD")
             );
 
             if (isBlank(configuredUser) && !isBlank(userFromUrl)) {
@@ -98,6 +106,31 @@ public class DatabaseUrlEnvironmentPostProcessor implements EnvironmentPostProce
 
     private static boolean isPostgresScheme(String scheme) {
         return "postgresql".equalsIgnoreCase(scheme) || "postgres".equalsIgnoreCase(scheme);
+    }
+
+    private static String buildUrlFromParts(ConfigurableEnvironment environment) {
+        String host = firstNonBlank(
+            environment.getProperty("DATABASE_HOST"),
+            environment.getProperty("PGHOST"),
+            environment.getProperty("DB_HOST")
+        );
+        String databaseName = firstNonBlank(
+            environment.getProperty("DATABASE_NAME"),
+            environment.getProperty("PGDATABASE"),
+            environment.getProperty("DB_NAME")
+        );
+        if (isBlank(host) || isBlank(databaseName)) {
+            return null;
+        }
+
+        String port = firstNonBlank(
+            environment.getProperty("DATABASE_PORT"),
+            environment.getProperty("PGPORT"),
+            environment.getProperty("DB_PORT"),
+            "5432"
+        );
+
+        return "jdbc:postgresql://" + host + ":" + port + "/" + databaseName;
     }
 
     private static String buildJdbcUrl(URI uri) {
