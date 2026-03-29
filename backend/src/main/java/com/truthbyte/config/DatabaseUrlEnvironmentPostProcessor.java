@@ -19,8 +19,8 @@ public class DatabaseUrlEnvironmentPostProcessor implements EnvironmentPostProce
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
         String rawDatabaseUrl = firstNonBlank(
-                environment.getProperty("DB_URL"),
-                environment.getProperty("DATABASE_URL")
+            environment.getProperty("DATABASE_URL"),
+            environment.getProperty("DB_URL")
         );
 
         if (isBlank(rawDatabaseUrl)) {
@@ -38,13 +38,13 @@ public class DatabaseUrlEnvironmentPostProcessor implements EnvironmentPostProce
             String passwordFromUrl = userInfo.length > 1 ? userInfo[1] : null;
 
             String configuredUser = firstNonBlank(
-                    environment.getProperty("DB_USERNAME"),
                     environment.getProperty("DATABASE_USERNAME"),
+                    environment.getProperty("DB_USERNAME"),
                     environment.getProperty("spring.datasource.username")
             );
             String configuredPassword = firstNonBlank(
-                    environment.getProperty("DB_PASSWORD"),
                     environment.getProperty("DATABASE_PASSWORD"),
+                    environment.getProperty("DB_PASSWORD"),
                     environment.getProperty("spring.datasource.password")
             );
 
