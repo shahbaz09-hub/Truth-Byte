@@ -22,6 +22,8 @@ public class DatabaseUrlEnvironmentPostProcessor implements EnvironmentPostProce
             environment.getProperty("SPRING_DATASOURCE_URL"),
             environment.getProperty("DATABASE_URL"),
             environment.getProperty("JDBC_DATABASE_URL"),
+            environment.getProperty("POSTGRES_URL"),
+            environment.getProperty("POSTGRESQL_URL"),
             environment.getProperty("DB_URL")
         );
 
@@ -45,15 +47,11 @@ public class DatabaseUrlEnvironmentPostProcessor implements EnvironmentPostProce
 
             String configuredUser = firstNonBlank(
                 environment.getProperty("SPRING_DATASOURCE_USERNAME"),
-                environment.getProperty("DATABASE_USERNAME"),
-                environment.getProperty("PGUSER"),
-                environment.getProperty("DB_USERNAME")
+                environment.getProperty("DATABASE_USERNAME")
             );
             String configuredPassword = firstNonBlank(
                 environment.getProperty("SPRING_DATASOURCE_PASSWORD"),
-                environment.getProperty("DATABASE_PASSWORD"),
-                environment.getProperty("PGPASSWORD"),
-                environment.getProperty("DB_PASSWORD")
+                environment.getProperty("DATABASE_PASSWORD")
             );
 
             if (isBlank(configuredUser) && !isBlank(userFromUrl)) {
@@ -112,11 +110,13 @@ public class DatabaseUrlEnvironmentPostProcessor implements EnvironmentPostProce
         String host = firstNonBlank(
             environment.getProperty("DATABASE_HOST"),
             environment.getProperty("PGHOST"),
+            environment.getProperty("POSTGRES_HOST"),
             environment.getProperty("DB_HOST")
         );
         String databaseName = firstNonBlank(
             environment.getProperty("DATABASE_NAME"),
             environment.getProperty("PGDATABASE"),
+            environment.getProperty("POSTGRES_DB"),
             environment.getProperty("DB_NAME")
         );
         if (isBlank(host) || isBlank(databaseName)) {
@@ -126,11 +126,28 @@ public class DatabaseUrlEnvironmentPostProcessor implements EnvironmentPostProce
         String port = firstNonBlank(
             environment.getProperty("DATABASE_PORT"),
             environment.getProperty("PGPORT"),
+            environment.getProperty("POSTGRES_PORT"),
             environment.getProperty("DB_PORT"),
             "5432"
         );
 
-        return "jdbc:postgresql://" + host + ":" + port + "/" + databaseName;
+        StringBuilder jdbcUrl = new StringBuilder("jdbc:postgresql://")
+            .append(host)
+            .append(':')
+            .append(port)
+            .append('/')
+            .append(databaseName);
+
+        String sslMode = firstNonBlank(
+            environment.getProperty("DATABASE_SSLMODE"),
+            environment.getProperty("PGSSLMODE"),
+            environment.getProperty("DB_SSLMODE")
+        );
+        if (!isBlank(sslMode)) {
+            jdbcUrl.append("?sslmode=").append(sslMode);
+        }
+
+        return jdbcUrl.toString();
     }
 
     private static String buildJdbcUrl(URI uri) {
