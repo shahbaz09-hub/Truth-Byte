@@ -9,9 +9,9 @@ RUN mvn -B -DskipTests package
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 
-ENV DB_URL=jdbc:postgresql://dpg-d74080dactks7386rk5g-a:5432/truthbyte_db
-ENV DB_USERNAME=truthbyte_db_user
-ENV DB_PASSWORD=ze5bKdytkWIdrJSExRC0APOfJTH82Oz8
+ENV DB_URL=jdbc:postgresql://host.docker.internal:5432/truthbyte
+ENV DB_USERNAME=postgres
+ENV DB_PASSWORD=
 ENV SERVER_PORT=8081
 
 COPY --from=build /workspace/target/backend-0.0.1-SNAPSHOT.jar /app/app.jar
