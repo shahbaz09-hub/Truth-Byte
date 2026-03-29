@@ -115,6 +115,14 @@ This repository now includes a complete Docker Compose stack:
 2. Edit `.env` and set at least:
   - `GEMINI_API_KEY`
   - `JWT_SECRET`
+  - Optional AI tuning vars used by backend:
+    - `GEMINI_API_KEYS` (comma-separated extra keys)
+    - `GEMINI_REQUEST_TIMEOUT_MS` (default `25000`)
+    - `GEMINI_RETRY_COUNT` (default `2`)
+    - `GEMINI_RETRY_DELAY_MS` (default `1200`)
+    - `GEMINI_MAX_OUTPUT_TOKENS` (default `1024`)
+    - `AI_FALLBACK_ON_QUOTA` (default `true`)
+    - `COMMUNITY_REPORT_CACHE_MINUTES` (default `15`)
 3. Start everything:
   - `docker compose up -d --build`
 
