@@ -6,9 +6,9 @@ spring:
 
   # Database Configuration
   datasource:
-    url: ${DB_URL:${DATABASE_URL:jdbc:postgresql://localhost:5432/truthbyte}}
-    username: ${DB_USERNAME:${DATABASE_USERNAME:postgres}}
-    password: ${DB_PASSWORD:${DATABASE_PASSWORD:}}
+    url: ${DB_URL:${JDBC_DATABASE_URL:jdbc:postgresql://dpg-d74080dactks7386rk5g-a:5432/truthbyte_db}}
+    username: ${DB_USERNAME:${DATABASE_USERNAME:truthbyte_db_user}}
+    password: ${DB_PASSWORD:${DATABASE_PASSWORD:ze5bKdytkWIdrJSExRC0APOfJTH82Oz8}}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
