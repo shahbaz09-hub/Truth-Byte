@@ -48,5 +48,6 @@ public class GeminiRequest {
     public static class GenerationConfig {
         private Double temperature;
         private String responseMimeType;
+        private Integer maxOutputTokens;
     }
 }

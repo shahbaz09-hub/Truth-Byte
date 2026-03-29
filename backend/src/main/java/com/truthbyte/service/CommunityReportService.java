@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +26,12 @@ public class CommunityReportService {
 
     @Value("${truthbyte.ai.fallback-on-quota:true}")
     private boolean fallbackOnQuota;
+
+    @Value("${truthbyte.ai.community.cache-minutes:15}")
+    private long cacheMinutes;
+
+    private volatile List<Map<String, Object>> cachedReports = Collections.emptyList();
+    private volatile Instant cacheExpiresAt = Instant.EPOCH;
 
     private static final String SYSTEM_PROMPT = """
         You are a misinformation tracking system. Return a JSON object with a "reports" array of 6-8 currently trending or notable misinformation claims being discussed online.
@@ -52,13 +59,20 @@ public class CommunityReportService {
     public List<Map<String, Object>> getTrendingReports() {
         logger.info("Fetching trending community reports from AI...");
 
+        if (isCacheFresh()) {
+            logger.debug("Returning cached community reports ({} items)", cachedReports.size());
+            return cachedReports;
+        }
+
         String rawJson;
         try {
             rawJson = geminiClient.generateContent(SYSTEM_PROMPT, "Give me the latest trending misinformation reports from the community.").block();
         } catch (Exception e) {
             if (fallbackOnQuota && isGeminiUnavailable(e)) {
                 logger.warn("Gemini unavailable for community reports. Returning fallback list: {}", e.getMessage());
-                return buildFallbackReports();
+                List<Map<String, Object>> fallback = buildFallbackReports();
+                cacheReports(fallback);
+                return fallback;
             }
             throw new AiServiceException("Failed to fetch trending reports from AI service", e);
         }
@@ -73,14 +87,19 @@ public class CommunityReportService {
 
             if (reports == null) {
                 logger.warn("AI response did not contain 'reports' key");
-                return buildFallbackReports();
+                List<Map<String, Object>> fallback = buildFallbackReports();
+                cacheReports(fallback);
+                return fallback;
             }
 
             logger.info("Fetched {} trending reports from AI", reports.size());
+            cacheReports(reports);
             return reports;
         } catch (JsonProcessingException e) {
             logger.warn("Failed to parse AI community reports. Returning fallback list: {}", e.getMessage());
-            return buildFallbackReports();
+            List<Map<String, Object>> fallback = buildFallbackReports();
+            cacheReports(fallback);
+            return fallback;
         }
     }
 
@@ -92,16 +111,30 @@ public class CommunityReportService {
                 String normalized = message.toLowerCase();
                 if (normalized.contains("quota exceeded")
                         || normalized.contains("resource_exhausted")
+                    || normalized.contains("too_many_requests")
+                    || normalized.contains("rate limit")
                         || normalized.contains("permission_denied")
                         || normalized.contains("forbidden")
                         || normalized.contains("api key was reported as leaked")
-                        || normalized.contains("gemini_api_key is not configured")) {
+                        || normalized.contains("gemini_api_key is not configured")
+                        || normalized.contains("gemini_api_key (or gemini_api_keys) is not configured")
+                        || (normalized.contains("gemini_api_key") && normalized.contains("not configured"))) {
                     return true;
                 }
             }
             cursor = cursor.getCause();
         }
         return false;
+    }
+
+    private boolean isCacheFresh() {
+        return !cachedReports.isEmpty() && cacheExpiresAt.isAfter(Instant.now());
+    }
+
+    private void cacheReports(List<Map<String, Object>> reports) {
+        long ttlMinutes = Math.max(1, cacheMinutes);
+        cachedReports = List.copyOf(reports);
+        cacheExpiresAt = Instant.now().plusSeconds(ttlMinutes * 60);
     }
 
     private List<Map<String, Object>> buildFallbackReports() {

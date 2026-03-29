@@ -31,9 +31,18 @@ server:
 
 truthbyte:
   ai:
+    fallback-on-quota: ${AI_FALLBACK_ON_QUOTA:true}
     gemini:
       api-key: ${GEMINI_API_KEY:}
+      api-keys: ${GEMINI_API_KEYS:}
       url: ${GEMINI_API_URL:https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent}
+      fallback-url: ${GEMINI_FALLBACK_API_URL:}
+      request-timeout-ms: ${GEMINI_REQUEST_TIMEOUT_MS:25000}
+      retry-count: ${GEMINI_RETRY_COUNT:2}
+      retry-delay-ms: ${GEMINI_RETRY_DELAY_MS:1200}
+      max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:512}
+    community:
+      cache-minutes: ${COMMUNITY_REPORT_CACHE_MINUTES:15}
   security:
     jwt:
       secret: ${JWT_SECRET:VGhpc0lzQURldk9ubHlKc3duVG9rZW5LZXlDaGFuZ2VJblByb2Q=}

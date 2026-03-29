@@ -176,10 +176,14 @@ public class UrlAnalysisService {
                 String normalized = message.toLowerCase();
                 if (normalized.contains("quota exceeded")
                         || normalized.contains("resource_exhausted")
+                    || normalized.contains("too_many_requests")
+                    || normalized.contains("rate limit")
                         || normalized.contains("permission_denied")
                         || normalized.contains("forbidden")
                         || normalized.contains("api key was reported as leaked")
-                        || normalized.contains("gemini_api_key is not configured")) {
+                        || normalized.contains("gemini_api_key is not configured")
+                        || normalized.contains("gemini_api_key (or gemini_api_keys) is not configured")
+                        || (normalized.contains("gemini_api_key") && normalized.contains("not configured"))) {
                     return true;
                 }
             }
@@ -206,7 +210,7 @@ public class UrlAnalysisService {
                     "ai unavailable"
                 ))
                 .credibilityScore(0)
-                .summary("Live AI URL analysis is temporarily unavailable due to Gemini service limits or key issues. Please retry later or configure a valid Gemini key.")
+                .summary("Live AI URL analysis is temporarily unavailable due to Gemini rate/quota limits or key issues. If you rotate keys, use keys from different Gemini projects and retry after a short wait.")
                 .createdAt(LocalDateTime.now())
                 .build();
     }
