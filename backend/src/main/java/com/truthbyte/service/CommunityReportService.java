@@ -7,6 +7,7 @@ import com.truthbyte.exception.AiServiceException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
@@ -21,6 +22,9 @@ public class CommunityReportService {
 
     private final GeminiClientService geminiClient;
     private final ObjectMapper objectMapper;
+
+    @Value("${truthbyte.ai.fallback-on-quota:true}")
+    private boolean fallbackOnQuota;
 
     private static final String SYSTEM_PROMPT = """
         You are a misinformation tracking system. Return a JSON object with a "reports" array of 6-8 currently trending or notable misinformation claims being discussed online.
@@ -52,6 +56,10 @@ public class CommunityReportService {
         try {
             rawJson = geminiClient.generateContent(SYSTEM_PROMPT, "Give me the latest trending misinformation reports from the community.").block();
         } catch (Exception e) {
+            if (fallbackOnQuota && isGeminiUnavailable(e)) {
+                logger.warn("Gemini unavailable for community reports. Returning fallback list: {}", e.getMessage());
+                return buildFallbackReports();
+            }
             throw new AiServiceException("Failed to fetch trending reports from AI service", e);
         }
 
@@ -65,13 +73,66 @@ public class CommunityReportService {
 
             if (reports == null) {
                 logger.warn("AI response did not contain 'reports' key");
-                return Collections.emptyList();
+                return buildFallbackReports();
             }
 
             logger.info("Fetched {} trending reports from AI", reports.size());
             return reports;
         } catch (JsonProcessingException e) {
-            throw new AiServiceException("Failed to parse community reports AI response", e);
+            logger.warn("Failed to parse AI community reports. Returning fallback list: {}", e.getMessage());
+            return buildFallbackReports();
         }
+    }
+
+    private boolean isGeminiUnavailable(Throwable throwable) {
+        Throwable cursor = throwable;
+        while (cursor != null) {
+            String message = cursor.getMessage();
+            if (message != null) {
+                String normalized = message.toLowerCase();
+                if (normalized.contains("quota exceeded")
+                        || normalized.contains("resource_exhausted")
+                        || normalized.contains("permission_denied")
+                        || normalized.contains("forbidden")
+                        || normalized.contains("api key was reported as leaked")
+                        || normalized.contains("gemini_api_key is not configured")) {
+                    return true;
+                }
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
+    }
+
+    private List<Map<String, Object>> buildFallbackReports() {
+        return List.of(
+                Map.of(
+                        "id", 1,
+                        "claim", "A viral post claims a common kitchen ingredient can cure all viral infections overnight.",
+                        "category", "Health",
+                        "status", "PENDING",
+                        "reportedBy", "FactCheckCommunity",
+                        "date", "just now",
+                        "votes", 120
+                ),
+                Map.of(
+                        "id", 2,
+                        "claim", "A circulating message says election results were changed by a hidden app update.",
+                        "category", "Politics",
+                        "status", "PENDING",
+                        "reportedBy", "CivicWatch",
+                        "date", "just now",
+                        "votes", 95
+                ),
+                Map.of(
+                        "id", 3,
+                        "claim", "An investment thread guarantees fixed daily returns with zero risk using AI bots.",
+                        "category", "Finance",
+                        "status", "PENDING",
+                        "reportedBy", "ScamAlertDesk",
+                        "date", "just now",
+                        "votes", 88
+                )
+        );
     }
 }

@@ -91,8 +91,8 @@ public class UrlAnalysisService {
         try {
             rawJson = geminiClient.generateContent(SYSTEM_PROMPT, "Analyze this news source URL: " + url).block();
         } catch (Exception e) {
-            if (fallbackOnQuota && isGeminiQuotaExceeded(e)) {
-                logger.warn("Gemini quota exhausted. Returning fallback URL analysis for: {}", url);
+            if (fallbackOnQuota && isGeminiUnavailable(e)) {
+                logger.warn("Gemini unavailable. Returning fallback URL analysis for: {}", url);
                 return buildQuotaFallbackUrlResponse(url);
             }
             throw new AiServiceException("Failed to get response from AI service for URL analysis: " + e.getMessage(), e);
@@ -168,13 +168,18 @@ public class UrlAnalysisService {
                 .collect(java.util.stream.Collectors.toList());
     }
 
-    private boolean isGeminiQuotaExceeded(Throwable throwable) {
+    private boolean isGeminiUnavailable(Throwable throwable) {
         Throwable cursor = throwable;
         while (cursor != null) {
             String message = cursor.getMessage();
             if (message != null) {
                 String normalized = message.toLowerCase();
-                if (normalized.contains("quota exceeded") || normalized.contains("resource_exhausted")) {
+                if (normalized.contains("quota exceeded")
+                        || normalized.contains("resource_exhausted")
+                        || normalized.contains("permission_denied")
+                        || normalized.contains("forbidden")
+                        || normalized.contains("api key was reported as leaked")
+                        || normalized.contains("gemini_api_key is not configured")) {
                     return true;
                 }
             }
@@ -198,10 +203,10 @@ public class UrlAnalysisService {
                         "needs context",
                         "source check",
                         "fact-check pending",
-                        "quota limited"
+                    "ai unavailable"
                 ))
                 .credibilityScore(0)
-                .summary("Live AI URL analysis is temporarily unavailable because Gemini quota is exhausted. Please retry later or configure a key with available quota.")
+                .summary("Live AI URL analysis is temporarily unavailable due to Gemini service limits or key issues. Please retry later or configure a valid Gemini key.")
                 .createdAt(LocalDateTime.now())
                 .build();
     }

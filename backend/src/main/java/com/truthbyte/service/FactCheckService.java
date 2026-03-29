@@ -88,8 +88,8 @@ public class FactCheckService {
         try {
             rawJsonBlock = geminiClient.generateContent(SYSTEM_PROMPT, "Fact-check this claim: \"" + claimText + "\"").block();
         } catch (Exception e) {
-            if (fallbackOnQuota && isGeminiQuotaExceeded(e)) {
-                logger.warn("Gemini quota exhausted. Returning fallback claim response for: {}", claimText);
+            if (fallbackOnQuota && isGeminiUnavailable(e)) {
+                logger.warn("Gemini unavailable. Returning fallback claim response for: {}", claimText);
                 return buildQuotaFallbackClaim(claimText);
             }
             throw new AiServiceException("Failed to get response from AI service: " + e.getMessage(), e);
@@ -176,13 +176,18 @@ public class FactCheckService {
                 .collect(Collectors.toList());
     }
 
-    private boolean isGeminiQuotaExceeded(Throwable throwable) {
+    private boolean isGeminiUnavailable(Throwable throwable) {
         Throwable cursor = throwable;
         while (cursor != null) {
             String message = cursor.getMessage();
             if (message != null) {
                 String normalized = message.toLowerCase();
-                if (normalized.contains("quota exceeded") || normalized.contains("resource_exhausted")) {
+                if (normalized.contains("quota exceeded")
+                        || normalized.contains("resource_exhausted")
+                        || normalized.contains("permission_denied")
+                        || normalized.contains("forbidden")
+                        || normalized.contains("api key was reported as leaked")
+                        || normalized.contains("gemini_api_key is not configured")) {
                     return true;
                 }
             }
@@ -195,18 +200,18 @@ public class FactCheckService {
         return ClaimResponse.builder()
                 .verdict("MISLEADING")
                 .confidence(0.0)
-                .summary("Live AI analysis is temporarily unavailable because Gemini quota is exhausted. Please retry later or configure a key with available quota.")
+            .summary("Live AI analysis is temporarily unavailable due to Gemini service limits or key issues. Please retry later or configure a valid Gemini key.")
                 .keyPoints(List.of(
-                        "Gemini quota is exhausted for the current API key.",
+                "Gemini service is currently unavailable for this request.",
                         "A full automated fact-check could not be completed right now.",
-                        "Try again after quota reset or switch to another Gemini key/project.",
+                "Try again later or switch to a valid Gemini key/project.",
                         "Use known trusted sources before acting on this claim."
                 ))
                 .sources(List.of(
-                        "Google Gemini API quota dashboard",
+                "Google Gemini API dashboard",
                         "Backend service logs",
                         "Configured API key project usage",
-                        "Retry after quota reset"
+                "Retry with a valid key"
                 ))
                 .claimText(claimText)
                 .createdAt(LocalDateTime.now())

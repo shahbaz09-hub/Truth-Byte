@@ -31,7 +31,7 @@ services:
       DB_USERNAME: ${DB_USERNAME:-truthbyte_db_user}
       DB_PASSWORD: ${DB_PASSWORD:-ze5bKdytkWIdrJSExRC0APOfJTH82Oz8}
       SERVER_PORT: 8081
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-AIzaSyAuODuwn_Cdi05nLzVhJQpXV4oVjzBz-Cs}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_API_URL: ${GEMINI_API_URL:-https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent}
       JWT_SECRET: ${JWT_SECRET:-VGhpc0lzQURldk9ubHlKc3duVG9rZW5LZXlDaGFuZ2VJblByb2Q=}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
