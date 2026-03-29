@@ -6,9 +6,9 @@ spring:
 
   # Database Configuration
   datasource:
-    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:${JDBC_DATABASE_URL:${POSTGRES_URL:${POSTGRESQL_URL:${DB_URL:jdbc:postgresql://localhost:5432/truthbyte}}}}}}
-    username: ${SPRING_DATASOURCE_USERNAME:${DATABASE_USERNAME:${PGUSER:${POSTGRES_USER:${DB_USERNAME:postgres}}}}}
-    password: ${SPRING_DATASOURCE_PASSWORD:${DATABASE_PASSWORD:${PGPASSWORD:${POSTGRES_PASSWORD:${DB_PASSWORD:}}}}}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/truthbyte}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -27,7 +27,7 @@ spring:
     open-in-view: false
 
 server:
-  port: ${PORT:${SERVER_PORT:8081}}
+  port: ${SERVER_PORT:8081}
 
 truthbyte:
   ai:
