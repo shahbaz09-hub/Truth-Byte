@@ -100,6 +100,37 @@ By default the frontend runs on `http://localhost:5173` and proxies API calls fr
 
 ---
 
+## Docker – Full Stack (Frontend + Backend + DB)
+
+This repository now includes a complete Docker Compose stack:
+
+- `frontend` (Nginx + built Vite app)
+- `backend` (Spring Boot)
+- `db` (PostgreSQL)
+
+### Run the stack
+
+1. From repository root, copy env template:
+  - `copy docker.env.example .env` (Windows PowerShell)
+2. Edit `.env` and set at least:
+  - `GEMINI_API_KEY`
+  - `JWT_SECRET`
+3. Start everything:
+  - `docker compose up -d --build`
+
+### Access URLs
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8081`
+- Quick backend check: `http://localhost:8081/api/v1/search/claims?q=test`
+
+### Stop the stack
+
+- `docker compose down`
+- To also remove DB volume data: `docker compose down -v`
+
+---
+
 ## Environment configuration
 
 ### Backend
