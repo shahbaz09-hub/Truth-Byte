@@ -27,13 +27,13 @@ services:
       db:
         condition: service_healthy
     environment:
-      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-truthbyte}
-      DB_USERNAME: ${POSTGRES_USER:-postgres}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DB_URL: ${DB_URL:-jdbc:postgresql://db:5432/${POSTGRES_DB:-truthbyte}}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
       SERVER_PORT: 8081
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_API_URL: ${GEMINI_API_URL:-https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent}
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:-VGhpc0lzQURldk9ubHlKc3duVG9rZW5LZXlDaGFuZ2VJblByb2Q=}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
     ports:

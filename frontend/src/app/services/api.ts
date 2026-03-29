@@ -71,7 +71,7 @@ export async function loginUser(email: string, password: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password })
   });
-  if (!res.ok) throw new Error("Login failed. Check your credentials.");
+  if (!res.ok) throw new Error(await readErrorMessage(res, "Login failed. Check your credentials."));
   const data = await res.json();
   setAuthToken(data.token);
   setUserInfo({ id: data.id, email: data.email, fullName: data.fullName });
