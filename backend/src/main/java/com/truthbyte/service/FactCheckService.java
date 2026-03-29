@@ -12,9 +12,11 @@ import com.truthbyte.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,6 +32,9 @@ public class FactCheckService {
     private final UserRepository userRepository;
     private final GeminiClientService geminiClient;
     private final ObjectMapper objectMapper;
+
+    @Value("${truthbyte.ai.fallback-on-quota:true}")
+    private boolean fallbackOnQuota;
 
     private static final String SYSTEM_PROMPT = """
         You are an expert fact-checker. \
@@ -83,6 +88,10 @@ public class FactCheckService {
         try {
             rawJsonBlock = geminiClient.generateContent(SYSTEM_PROMPT, "Fact-check this claim: \"" + claimText + "\"").block();
         } catch (Exception e) {
+            if (fallbackOnQuota && isGeminiQuotaExceeded(e)) {
+                logger.warn("Gemini quota exhausted. Returning fallback claim response for: {}", claimText);
+                return buildQuotaFallbackClaim(claimText);
+            }
             throw new AiServiceException("Failed to get response from AI service: " + e.getMessage(), e);
         }
 
@@ -165,5 +174,42 @@ public class FactCheckService {
                         .snippet(fc.getAiSummary())
                         .build())
                 .collect(Collectors.toList());
+    }
+
+    private boolean isGeminiQuotaExceeded(Throwable throwable) {
+        Throwable cursor = throwable;
+        while (cursor != null) {
+            String message = cursor.getMessage();
+            if (message != null) {
+                String normalized = message.toLowerCase();
+                if (normalized.contains("quota exceeded") || normalized.contains("resource_exhausted")) {
+                    return true;
+                }
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
+    }
+
+    private ClaimResponse buildQuotaFallbackClaim(String claimText) {
+        return ClaimResponse.builder()
+                .verdict("MISLEADING")
+                .confidence(0.0)
+                .summary("Live AI analysis is temporarily unavailable because Gemini quota is exhausted. Please retry later or configure a key with available quota.")
+                .keyPoints(List.of(
+                        "Gemini quota is exhausted for the current API key.",
+                        "A full automated fact-check could not be completed right now.",
+                        "Try again after quota reset or switch to another Gemini key/project.",
+                        "Use known trusted sources before acting on this claim."
+                ))
+                .sources(List.of(
+                        "Google Gemini API quota dashboard",
+                        "Backend service logs",
+                        "Configured API key project usage",
+                        "Retry after quota reset"
+                ))
+                .claimText(claimText)
+                .createdAt(LocalDateTime.now())
+                .build();
     }
 }

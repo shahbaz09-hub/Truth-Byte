@@ -11,9 +11,12 @@ import com.truthbyte.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -28,6 +31,9 @@ public class UrlAnalysisService {
     private final UserRepository userRepository;
     private final GeminiClientService geminiClient;
     private final ObjectMapper objectMapper;
+
+    @Value("${truthbyte.ai.fallback-on-quota:true}")
+    private boolean fallbackOnQuota;
 
     private static final String SYSTEM_PROMPT = """
         You are an expert media analyst specializing in bias detection.
@@ -85,6 +91,10 @@ public class UrlAnalysisService {
         try {
             rawJson = geminiClient.generateContent(SYSTEM_PROMPT, "Analyze this news source URL: " + url).block();
         } catch (Exception e) {
+            if (fallbackOnQuota && isGeminiQuotaExceeded(e)) {
+                logger.warn("Gemini quota exhausted. Returning fallback URL analysis for: {}", url);
+                return buildQuotaFallbackUrlResponse(url);
+            }
             throw new AiServiceException("Failed to get response from AI service for URL analysis: " + e.getMessage(), e);
         }
 
@@ -156,5 +166,63 @@ public class UrlAnalysisService {
                 })
                 .filter(r -> r != null)
                 .collect(java.util.stream.Collectors.toList());
+    }
+
+    private boolean isGeminiQuotaExceeded(Throwable throwable) {
+        Throwable cursor = throwable;
+        while (cursor != null) {
+            String message = cursor.getMessage();
+            if (message != null) {
+                String normalized = message.toLowerCase();
+                if (normalized.contains("quota exceeded") || normalized.contains("resource_exhausted")) {
+                    return true;
+                }
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
+    }
+
+    private UrlResponse buildQuotaFallbackUrlResponse(String inputUrl) {
+        UrlResponse.FactOpinion ratio = new UrlResponse.FactOpinion(50, 50);
+        String domain = extractDomain(inputUrl);
+
+        return UrlResponse.builder()
+                .url(inputUrl)
+                .domain(domain)
+                .title("AI analysis unavailable")
+                .politicalBias(0)
+                .factOpinionRatio(ratio)
+                .manipulativeWords(List.of(
+                        "unverified",
+                        "needs context",
+                        "source check",
+                        "fact-check pending",
+                        "quota limited"
+                ))
+                .credibilityScore(0)
+                .summary("Live AI URL analysis is temporarily unavailable because Gemini quota is exhausted. Please retry later or configure a key with available quota.")
+                .createdAt(LocalDateTime.now())
+                .build();
+    }
+
+    private String extractDomain(String inputUrl) {
+        if (inputUrl == null || inputUrl.isBlank()) {
+            return "unknown";
+        }
+
+        try {
+            String normalized = inputUrl.startsWith("http://") || inputUrl.startsWith("https://")
+                    ? inputUrl
+                    : "https://" + inputUrl;
+            URI uri = URI.create(normalized);
+            String host = uri.getHost();
+            if (host == null || host.isBlank()) {
+                return inputUrl;
+            }
+            return host.replaceFirst("^www\\.", "");
+        } catch (Exception ex) {
+            return inputUrl;
+        }
     }
 }
