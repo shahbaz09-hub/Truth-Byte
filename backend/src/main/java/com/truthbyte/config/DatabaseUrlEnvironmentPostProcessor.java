@@ -65,6 +65,12 @@ public class DatabaseUrlEnvironmentPostProcessor implements EnvironmentPostProce
         if (url.startsWith("jdbc:")) {
             return url;
         }
+
+        URI parsed = parseUrl(url);
+        if (parsed != null && isPostgresScheme(parsed.getScheme()) && !isBlank(parsed.getHost())) {
+            return buildJdbcUrl(parsed);
+        }
+
         if (url.startsWith("postgresql://")) {
             return "jdbc:postgresql://" + url.substring("postgresql://".length());
         }
@@ -88,6 +94,30 @@ public class DatabaseUrlEnvironmentPostProcessor implements EnvironmentPostProce
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private static boolean isPostgresScheme(String scheme) {
+        return "postgresql".equalsIgnoreCase(scheme) || "postgres".equalsIgnoreCase(scheme);
+    }
+
+    private static String buildJdbcUrl(URI uri) {
+        StringBuilder jdbcUrl = new StringBuilder("jdbc:postgresql://").append(uri.getHost());
+
+        if (uri.getPort() > 0) {
+            jdbcUrl.append(':').append(uri.getPort());
+        }
+
+        String path = uri.getRawPath();
+        if (isBlank(path)) {
+            path = "/";
+        }
+        jdbcUrl.append(path);
+
+        if (!isBlank(uri.getRawQuery())) {
+            jdbcUrl.append('?').append(uri.getRawQuery());
+        }
+
+        return jdbcUrl.toString();
     }
 
     private static boolean isBlank(String value) {
