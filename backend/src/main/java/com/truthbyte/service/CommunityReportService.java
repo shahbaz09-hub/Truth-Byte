@@ -34,45 +34,44 @@ public class CommunityReportService {
     private volatile Instant cacheExpiresAt = Instant.EPOCH;
 
     private static final String SYSTEM_PROMPT = """
-        You are a misinformation tracking system. Return a JSON object with a "reports" array of 6-8 currently trending or notable misinformation claims being discussed online.
-        Structure:
-        {
-          "reports": [
-            {
-              "id": 1,
-              "claim": "<a specific, realistic misinformation claim currently circulating>",
-              "category": "Health" | "Politics" | "Finance" | "Tech",
-              "status": "PENDING" | "VERIFIED" | "FAKE",
-              "reportedBy": "<realistic username or organization name>",
-              "date": "<relative time like '2 hours ago'>",
-              "votes": <number between 50 and 900>
-            }
-          ]
-        }
+        Misinformation tracker. Return JSON with "reports" array of 6 trending claims:
+        {"reports":[{"id":1,"claim":"<specific claim>","category":"Health|Politics|Finance|Tech","status":"PENDING|VERIFIED|FAKE","reportedBy":"<name>","date":"<relative time>","votes":<50-900>}]}
+        Raw JSON only, no markdown.
         """;
 
     /**
      * Returns trending misinformation reports.
-     * Note: In a fully fleshed-out system, this data would come from the database (CommunityReportRepository).
-     * For this MVP phase, we simulate the "trending" endpoint by dynamically requesting it from AI.
+     * Uses aggressive caching (60 min default) and returns fallback instantly
+     * when cache is empty to avoid unnecessary AI calls.
      */
     public List<Map<String, Object>> getTrendingReports() {
-        logger.info("Fetching trending community reports from AI...");
-
+        // Always return cached data if fresh
         if (isCacheFresh()) {
             logger.debug("Returning cached community reports ({} items)", cachedReports.size());
             return cachedReports;
         }
 
+        // If cache is empty/expired, return fallback immediately and try to refresh in background
+        if (cachedReports.isEmpty()) {
+            logger.info("No cached community reports. Returning fallback data instantly.");
+            List<Map<String, Object>> fallback = buildFallbackReports();
+            cacheReports(fallback);
+        }
+
+        // Try to fetch fresh data from AI
+        logger.info("Fetching trending community reports from AI...");
         String rawJson;
         try {
-            rawJson = geminiClient.generateContent(SYSTEM_PROMPT, "Give me the latest trending misinformation reports from the community.").block();
+            rawJson = geminiClient.generateContent(SYSTEM_PROMPT, "Give me the latest trending misinformation reports.").block();
         } catch (Exception e) {
             if (fallbackOnQuota && isGeminiUnavailable(e)) {
-                logger.warn("Gemini unavailable for community reports. Returning fallback list: {}", e.getMessage());
-                List<Map<String, Object>> fallback = buildFallbackReports();
-                cacheReports(fallback);
-                return fallback;
+                logger.warn("Gemini unavailable for community reports. Using cached/fallback: {}", e.getMessage());
+                return cachedReports;
+            }
+            // If AI fails for any reason, return whatever we have cached
+            if (!cachedReports.isEmpty()) {
+                logger.warn("AI call failed, returning existing cached reports: {}", e.getMessage());
+                return cachedReports;
             }
             throw new AiServiceException("Failed to fetch trending reports from AI service", e);
         }
@@ -87,19 +86,15 @@ public class CommunityReportService {
 
             if (reports == null) {
                 logger.warn("AI response did not contain 'reports' key");
-                List<Map<String, Object>> fallback = buildFallbackReports();
-                cacheReports(fallback);
-                return fallback;
+                return cachedReports;
             }
 
             logger.info("Fetched {} trending reports from AI", reports.size());
             cacheReports(reports);
             return reports;
         } catch (JsonProcessingException e) {
-            logger.warn("Failed to parse AI community reports. Returning fallback list: {}", e.getMessage());
-            List<Map<String, Object>> fallback = buildFallbackReports();
-            cacheReports(fallback);
-            return fallback;
+            logger.warn("Failed to parse AI community reports. Using cached data: {}", e.getMessage());
+            return cachedReports;
         }
     }
 

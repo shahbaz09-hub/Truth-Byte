@@ -36,22 +36,9 @@ public class UrlAnalysisService {
     private boolean fallbackOnQuota;
 
     private static final String SYSTEM_PROMPT = """
-        You are an expert media analyst specializing in bias detection.
-        Analyze the news source URL provided and return a JSON object with this exact structure:
-        {
-          "domain": "<extracted domain name>",
-          "title": "<full name of the publication>",
-          "politicalBias": <number from -100 to +100>,
-          "factOpinionRatio": { "fact": <0-100>, "opinion": <0-100> },
-          "manipulativeWords": ["<word 1>", "<word 2>", "<word 3>", "<word 4>", "<word 5>"],
-          "credibilityScore": <number 0-100>,
-          "summary": "<2-3 sentence explanation of credibility and bias>"
-        }
-        
-        Rules:
-        - Base analysis on known reputation of the source/domain
-        - If unknown, give best assessment based on domain name
-        - DO NOT include markdown formatting like ```json in the output. Just return the raw JSON.
+        Expert media analyst. Respond ONLY with this JSON (no markdown):
+        {"domain":"<domain>","title":"<publication name>","politicalBias":<-100 to 100>,"factOpinionRatio":{"fact":<0-100>,"opinion":<0-100>},"manipulativeWords":["<1>","<2>","<3>","<4>","<5>"],"credibilityScore":<0-100>,"summary":"<2-3 sentences>"}
+        Base analysis on known source reputation. Raw JSON only.
         """;
 
     @Transactional

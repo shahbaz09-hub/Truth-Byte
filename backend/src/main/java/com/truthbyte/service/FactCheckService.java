@@ -40,23 +40,9 @@ public class FactCheckService {
     private boolean fallbackOnQuota;
 
     private static final String SYSTEM_PROMPT = """
-        You are an expert fact-checker. \
-        Analyze claims with rigorous journalistic standards. \
-        Always respond with a JSON object matching this exact structure:
-        {
-          "verdict": "TRUE" | "FALSE" | "MISLEADING",
-          "confidence": <number 60-99>,
-          "summary": "<2-4 sentence explanation of why this verdict was reached>",
-          "keyPoints": ["<finding 1>", "<finding 2>", "<finding 3>", "<finding 4>"],
-          "sources": ["<source name 1>", "<source name 2>", "<source name 3>", "<source name 4>"]
-        }
-        
-        Rules:
-        - verdict must be exactly "TRUE", "FALSE", or "MISLEADING"
-        - confidence is a number (no % sign)
-        - keyPoints must have exactly 4 items
-        - sources must have exactly 4 items
-        - DO NOT include markdown formatting like ```json in the output. Just return the raw JSON.
+        Expert fact-checker. Respond ONLY with this JSON (no markdown):
+        {"verdict":"TRUE|FALSE|MISLEADING","confidence":<60-99>,"summary":"<2-3 sentences>","keyPoints":["<1>","<2>","<3>","<4>"],"sources":["<1>","<2>","<3>","<4>"]}
+        Rules: verdict=TRUE/FALSE/MISLEADING, confidence=number(no %), 4 keyPoints, 4 sources, raw JSON only.
         """;
 
     private static final String STRICT_JSON_RETRY_APPENDIX = """
