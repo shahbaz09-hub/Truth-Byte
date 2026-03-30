@@ -31,6 +31,46 @@ export function getUserInfo(): { id: string; email: string; fullName: string } |
   }
 }
 
+/**
+ * Decode JWT payload and check if token is expired.
+ * Returns true if token is missing, malformed, or expired.
+ */
+export function isTokenExpired(): boolean {
+  const token = getAuthToken();
+  if (!token) return true;
+
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return true;
+
+    const payload = JSON.parse(atob(parts[1]));
+    if (!payload.exp) return true;
+
+    // exp is in seconds, Date.now() in ms — add 30s buffer so we don't use near-expired tokens
+    return Date.now() >= (payload.exp * 1000) - 30000;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Returns true only if token exists AND is not expired.
+ */
+export function isAuthenticated(): boolean {
+  return !isTokenExpired();
+}
+
+/**
+ * Clear expired session — removes token + user info and returns true if was expired.
+ */
+export function clearExpiredSession(): boolean {
+  if (getAuthToken() && isTokenExpired()) {
+    removeAuthToken();
+    return true;
+  }
+  return false;
+}
+
 function authHeaders() {
   const token = getAuthToken();
   return {
@@ -51,14 +91,63 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
   return fallback;
 }
 
+// Default fetch timeout (55 seconds to match backend timeout)
+const FETCH_TIMEOUT_MS = 55000;
+
 async function safeFetch(input: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
   try {
-    return await fetch(input, init);
-  } catch {
+    const res = await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+
+    // Global 401 handling — if server says unauthorized, clear session
+    if (res.status === 401) {
+      const token = getAuthToken();
+      if (token) {
+        removeAuthToken();
+        // Only redirect if we thought we were logged in
+        if (typeof window !== "undefined" && !window.location.pathname.includes("/login")) {
+          window.location.href = "/login";
+        }
+      }
+    }
+
+    return res;
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      throw new Error(
+        "Request timed out. The server may be waking up (Render free tier). Please try again in a moment."
+      );
+    }
     throw new Error(
-      "Cannot reach backend server. Start backend and verify VITE_API_BASE_URL points to a running API."
+      "Cannot reach backend server. Please check your connection and try again."
     );
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BACKEND WARMUP (Render cold start mitigation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+let warmupDone = false;
+
+/**
+ * Sends a lightweight GET to /health to wake up the Render backend.
+ * Called once on app load. Non-blocking, fire-and-forget.
+ */
+export function warmupBackend(): void {
+  if (warmupDone) return;
+  warmupDone = true;
+
+  fetch(`${API_BASE_URL}/health`, { method: "GET" })
+    .then(() => console.log("[TruthByte] Backend is awake."))
+    .catch(() => console.log("[TruthByte] Backend warmup ping sent (may still be starting)."));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -255,4 +344,3 @@ export async function ingestForwardedMessage(payload: BotIngestRequest): Promise
   if (!res.ok) throw new Error(await readErrorMessage(res, "Failed to ingest forwarded message."));
   return res.json();
 }
-
