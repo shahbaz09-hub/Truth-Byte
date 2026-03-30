@@ -2,7 +2,7 @@ import { Outlet, Link, useLocation, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { Menu, X, Shield, Search as SearchIcon, Users, LayoutDashboard, Zap, LogOut, ChevronDown, Bot } from "lucide-react";
 import { useState, useEffect } from "react";
-import { getAuthToken, removeAuthToken, getUserInfo } from "../services/api";
+import { isAuthenticated, removeAuthToken, getUserInfo, clearExpiredSession, warmupBackend } from "../services/api";
 
 export function Layout() {
   const location = useLocation();
@@ -14,12 +14,24 @@ export function Layout() {
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
 
+  // Warmup backend on first mount
   useEffect(() => {
-    const token = getAuthToken();
-    setIsLoggedIn(!!token);
-    const info = getUserInfo();
-    setUserName(info?.fullName || "");
-    setUserEmail(info?.email || "");
+    warmupBackend();
+  }, []);
+
+  useEffect(() => {
+    // Auto-clear expired tokens
+    clearExpiredSession();
+    const authenticated = isAuthenticated();
+    setIsLoggedIn(authenticated);
+    if (authenticated) {
+      const info = getUserInfo();
+      setUserName(info?.fullName || "");
+      setUserEmail(info?.email || "");
+    } else {
+      setUserName("");
+      setUserEmail("");
+    }
     setUserMenuOpen(false);
   }, [location.pathname]);
 

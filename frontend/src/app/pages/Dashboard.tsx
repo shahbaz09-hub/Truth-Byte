@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { Target, Award, Clock, CheckCircle2, XCircle, AlertTriangle, BarChart3, Activity, Crosshair, Gauge, Flame, Zap } from "lucide-react";
 import { AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
 import { useNavigate } from "react-router";
-import { getAuthToken, getUserInfo, fetchClaimHistory, ClaimAnalysisResult } from "../services/api";
+import { isAuthenticated, getUserInfo, fetchClaimHistory, ClaimAnalysisResult } from "../services/api";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -80,7 +80,7 @@ export function Dashboard() {
   const userName = getUserInfo()?.fullName || "User";
 
   useEffect(() => {
-    if (!getAuthToken()) {
+    if (!isAuthenticated()) {
       navigate("/login");
       return;
     }
