@@ -34,9 +34,15 @@ public class CommunityReportService {
     private volatile Instant cacheExpiresAt = Instant.EPOCH;
 
     private static final String SYSTEM_PROMPT = """
-        Misinformation tracker. Return JSON with "reports" array of 6 trending claims:
-        {"reports":[{"id":1,"claim":"<specific claim>","category":"Health|Politics|Finance|Tech","status":"PENDING|VERIFIED|FAKE","reportedBy":"<name>","date":"<relative time>","votes":<50-900>}]}
-        Raw JSON only, no markdown.
+        You are a misinformation trends tracker. Return a JSON object with a "reports" array containing exactly 6 trending misinformation claims. Each report must have:
+        - "id": sequential number starting from 1
+        - "claim": the specific trending claim (be detailed)
+        - "category": one of "Health", "Politics", "Finance", or "Tech"
+        - "status": one of "PENDING", "VERIFIED", or "FAKE"
+        - "reportedBy": a realistic reporter or organization name
+        - "date": a relative time string like "2 hours ago", "just now", "1 day ago"
+        - "votes": a number between 50 and 900
+        Focus on realistic, currently trending misinformation topics.
         """;
 
     /**

@@ -35,12 +35,12 @@ truthbyte:
     gemini:
       api-key: ${GEMINI_API_KEY:}
       api-keys: ${GEMINI_API_KEYS:}
-      url: ${GEMINI_API_URL:https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent}
-      fallback-url: ${GEMINI_FALLBACK_API_URL:https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent}
-      request-timeout-ms: ${GEMINI_REQUEST_TIMEOUT_MS:55000}
-      retry-count: ${GEMINI_RETRY_COUNT:1}
-      retry-delay-ms: ${GEMINI_RETRY_DELAY_MS:800}
-      max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:768}
+      url: ${GEMINI_API_URL:https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent}
+      fallback-url: ${GEMINI_FALLBACK_API_URL:https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent}
+      request-timeout-ms: ${GEMINI_REQUEST_TIMEOUT_MS:60000}
+      retry-count: ${GEMINI_RETRY_COUNT:2}
+      retry-delay-ms: ${GEMINI_RETRY_DELAY_MS:1500}
+      max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:8192}
     community:
       cache-minutes: ${COMMUNITY_REPORT_CACHE_MINUTES:60}
   security:

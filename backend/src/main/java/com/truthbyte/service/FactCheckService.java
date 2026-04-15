@@ -40,16 +40,12 @@ public class FactCheckService {
     private boolean fallbackOnQuota;
 
     private static final String SYSTEM_PROMPT = """
-        Expert fact-checker. Respond ONLY with this JSON (no markdown):
-        {"verdict":"TRUE|FALSE|MISLEADING","confidence":<60-99>,"summary":"<2-3 sentences>","keyPoints":["<1>","<2>","<3>","<4>"],"sources":["<1>","<2>","<3>","<4>"]}
-        Rules: verdict=TRUE/FALSE/MISLEADING, confidence=number(no %), 4 keyPoints, 4 sources, raw JSON only.
-        """;
-
-    private static final String STRICT_JSON_RETRY_APPENDIX = """
-        CRITICAL OUTPUT RULES (must follow exactly):
-        - Return ONLY one valid JSON object.
-        - Close all quotes and braces.
-        - Do not include markdown, explanation, or extra text.
+        You are an expert fact-checker. Analyze the given claim and return a JSON object with these fields:
+        - "verdict": one of "TRUE", "FALSE", or "MISLEADING"
+        - "confidence": a number between 60 and 99 (no % sign)
+        - "summary": a clear 2-3 sentence explanation of your verdict
+        - "keyPoints": an array of exactly 4 key findings
+        - "sources": an array of exactly 4 credible source names or URLs that support your analysis
         """;
 
     @Transactional
@@ -96,32 +92,28 @@ public class FactCheckService {
         try {
             aiResponse = parseClaimResponse(rawJsonBlock);
         } catch (JsonProcessingException firstParseError) {
-            logger.warn("Malformed AI JSON on first attempt. Retrying once with stricter JSON prompt. Error: {}",
+            logger.warn("Malformed AI JSON on first attempt. Trying recovery. Error: {}",
                     firstParseError.getOriginalMessage());
 
-            String recoveryRawText = rawJsonBlock;
-            String retryRawJson;
+            // Try to recover structured data from the malformed response
+            ClaimResponse recovered = tryRecoverClaimResponse(rawJsonBlock, claimText);
+            if (recovered != null) {
+                logger.info("Successfully recovered fact-check from malformed AI output.");
+                return recovered;
+            }
+
+            // One more AI call as last resort
             try {
-                retryRawJson = geminiClient
-                        .generateContent(SYSTEM_PROMPT + "\n" + STRICT_JSON_RETRY_APPENDIX,
-                                "Fact-check this claim: \"" + claimText + "\"")
+                String retryRawJson = geminiClient
+                        .generateContent(SYSTEM_PROMPT, "Fact-check this claim: \"" + claimText + "\"")
                         .block();
-                recoveryRawText = retryRawJson;
                 aiResponse = parseClaimResponse(retryRawJson);
             } catch (Exception retryError) {
                 if (fallbackOnQuota && isGeminiUnavailable(retryError)) {
-                    logger.warn("Gemini unavailable during strict retry. Returning quota fallback response for claim.");
+                    logger.warn("Gemini unavailable during retry. Returning fallback.");
                     return buildQuotaFallbackClaim(claimText);
                 }
-
-                ClaimResponse recovered = tryRecoverClaimResponse(recoveryRawText, claimText);
-                if (recovered != null) {
-                    logger.warn("Recovered fact-check from malformed AI output after strict retry failed.");
-                    return recovered;
-                }
-
-                logger.warn("AI returned malformed output after retry. Returning malformed-response fallback. Error: {}",
-                        retryError.getMessage());
+                logger.warn("AI retry also failed. Returning fallback. Error: {}", retryError.getMessage());
                 return buildMalformedFallbackClaim(claimText);
             }
         }

@@ -40,7 +40,15 @@ public class GeminiClientService {
 
         // Per-key cooldown tracking: key -> cooldown expiry instant
         private final Map<String, Instant> keyCooldowns = new ConcurrentHashMap<>();
-        private static final Duration KEY_COOLDOWN_DURATION = Duration.ofSeconds(90);
+
+        // Per-key consecutive failure count for exponential cooldown
+        private final Map<String, Integer> keyFailureCounts = new ConcurrentHashMap<>();
+
+        // Base cooldown duration (30s) — scales up with repeated failures
+        private static final Duration BASE_COOLDOWN = Duration.ofSeconds(30);
+        private static final Duration MAX_COOLDOWN = Duration.ofMinutes(5);
+
+
 
         public GeminiClientService(
                         WebClient.Builder webClientBuilder,
@@ -48,24 +56,24 @@ public class GeminiClientService {
                         @Value("${truthbyte.ai.gemini.fallback-url:}") String fallbackGeminiApiUrl,
                         @Value("${truthbyte.ai.gemini.api-key:}") String geminiApiKey,
                         @Value("${truthbyte.ai.gemini.api-keys:}") String geminiApiKeys,
-                        @Value("${truthbyte.ai.gemini.request-timeout-ms:55000}") long requestTimeoutMs,
-                        @Value("${truthbyte.ai.gemini.retry-count:1}") long retryCount,
-                        @Value("${truthbyte.ai.gemini.retry-delay-ms:800}") long retryDelayMs,
-                        @Value("${truthbyte.ai.gemini.max-output-tokens:768}") Integer maxOutputTokens
+                        @Value("${truthbyte.ai.gemini.request-timeout-ms:60000}") long requestTimeoutMs,
+                        @Value("${truthbyte.ai.gemini.retry-count:2}") long retryCount,
+                        @Value("${truthbyte.ai.gemini.retry-delay-ms:1500}") long retryDelayMs,
+                        @Value("${truthbyte.ai.gemini.max-output-tokens:8192}") Integer maxOutputTokens
         ) {
                 this.webClient = webClientBuilder
-                                .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
+                                .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
                                 .build();
                 this.geminiApiUrls = buildApiUrls(primaryGeminiApiUrl, fallbackGeminiApiUrl);
                 this.geminiApiKeys = buildApiKeys(geminiApiKey, geminiApiKeys);
                 this.requestTimeout = Duration.ofMillis(Math.max(1000, requestTimeoutMs));
                 this.retryCount = Math.max(0, retryCount);
                 this.retryDelay = Duration.ofMillis(Math.max(100, retryDelayMs));
-                int configuredTokens = (maxOutputTokens != null && maxOutputTokens > 0) ? maxOutputTokens : 768;
-                this.maxOutputTokens = Math.max(512, configuredTokens);
+                int configuredTokens = (maxOutputTokens != null && maxOutputTokens > 0) ? maxOutputTokens : 8192;
+                this.maxOutputTokens = Math.max(1024, configuredTokens);
 
-                logger.info("GeminiClientService initialized — {} model URL(s), {} API key(s), timeout={}ms",
-                                this.geminiApiUrls.size(), this.geminiApiKeys.size(), requestTimeoutMs);
+                logger.info("GeminiClientService initialized — {} model URL(s), {} API key(s), timeout={}ms, maxTokens={}",
+                                this.geminiApiUrls.size(), this.geminiApiKeys.size(), requestTimeoutMs, this.maxOutputTokens);
         }
 
         public Mono<String> generateContent(String systemInstruction, String userMessage) {
@@ -84,7 +92,7 @@ public class GeminiClientService {
                                                 .parts(List.of(GeminiRequest.Part.builder().text(userMessage).build()))
                                                 .build()))
                                 .generationConfig(GeminiRequest.GenerationConfig.builder()
-                                                .temperature(0.1)
+                                                .temperature(0.3)
                                                 .responseMimeType("application/json")
                                                 .maxOutputTokens(maxOutputTokens)
                                                 .build())
@@ -94,16 +102,17 @@ public class GeminiClientService {
                 int startingKeyIndex = Math.abs(keyRotationCounter.getAndIncrement()) % geminiApiKeys.size();
 
                 return callWithFailover(request, 0, startingKeyIndex, null)
-                                .doOnError(e -> logger.error("Error communicating with Gemini AI: {}", rootMessage(e)))
+                                .doOnError(e -> logger.error("All Gemini attempts exhausted: {}", rootMessage(e)))
                                 .onErrorMap(e -> new RuntimeException("Error communicating with Gemini AI: " + rootMessage(e), e));
         }
 
         private Mono<String> callWithFailover(GeminiRequest request, int attempt, int startingKeyIndex, Throwable lastError) {
                 int totalTargets = geminiApiUrls.size() * geminiApiKeys.size();
                 if (attempt >= totalTargets) {
+                        // All keys/models exhausted — check if any key cooldown is about to expire
                         String reason = lastError != null ? rootMessage(lastError) : "No valid Gemini model/key combination available.";
                         return Mono.error(new RuntimeException(
-                                        "Gemini API exhausted all configured model/key attempts. Last error: " + reason,
+                                        "RESOURCE_EXHAUSTED: Gemini API exhausted all configured model/key attempts. Last error: " + reason,
                                         lastError
                         ));
                 }
@@ -123,17 +132,24 @@ public class GeminiClientService {
                 }
 
                 return executeRequest(apiUrl, apiKey, request)
+                                .doOnNext(response -> {
+                                        // Success — reset failure count for this key
+                                        keyFailureCounts.remove(apiKey);
+                                        keyCooldowns.remove(apiKey);
+                                })
                                 .onErrorResume(ex -> {
-                                        // If quota/rate limit hit, put this key on cooldown
+                                        // If quota/rate limit hit, put this key on exponential cooldown
                                         if (isQuotaError(ex)) {
-                                                keyCooldowns.put(apiKey, Instant.now().plus(KEY_COOLDOWN_DURATION));
-                                                logger.warn("Key #{} hit quota limit. Cooling down for {}s.",
-                                                                keyIndex + 1, KEY_COOLDOWN_DURATION.getSeconds());
+                                                int failures = keyFailureCounts.merge(apiKey, 1, Integer::sum);
+                                                Duration cooldown = calculateCooldown(failures);
+                                                keyCooldowns.put(apiKey, Instant.now().plus(cooldown));
+                                                logger.warn("Key #{} hit quota limit (failure #{}). Cooling down for {}s.",
+                                                                keyIndex + 1, failures, cooldown.getSeconds());
                                         }
 
                                         if (shouldTryNextTarget(ex) && attempt + 1 < totalTargets) {
                                                 logger.warn(
-                                                                "Gemini attempt failed for model '{}' with key #{} (attempt {}/{}). Trying next. Cause: {}",
+                                                                "Gemini attempt failed — model '{}', key #{} (attempt {}/{}). Trying next. Cause: {}",
                                                                 extractModelName(apiUrl),
                                                                 keyIndex + 1,
                                                                 attempt + 1,
@@ -144,6 +160,15 @@ public class GeminiClientService {
                                         }
                                         return Mono.error(ex);
                                 });
+        }
+
+        /**
+         * Calculate exponential cooldown based on consecutive failure count.
+         * 1st failure: 30s, 2nd: 60s, 3rd: 120s, capped at 5 minutes.
+         */
+        private Duration calculateCooldown(int failureCount) {
+                long seconds = BASE_COOLDOWN.getSeconds() * (long) Math.pow(2, Math.min(failureCount - 1, 4));
+                return Duration.ofSeconds(Math.min(seconds, MAX_COOLDOWN.getSeconds()));
         }
 
         private Mono<String> executeRequest(String apiUrl, String apiKey, GeminiRequest request) {
@@ -162,8 +187,9 @@ public class GeminiClientService {
                                         Retry.backoff(retryCount, retryDelay)
                                                         .filter(this::isRetryable)
                                                         .doBeforeRetry(signal -> logger.warn(
-                                                                        "Retrying Gemini call for model '{}' after transient issue: {}",
+                                                                        "Retrying Gemini call for model '{}' (retry #{}) after: {}",
                                                                         extractModelName(apiUrl),
+                                                                        signal.totalRetries() + 1,
                                                                         rootMessage(signal.failure())
                                                         ))
                                                         .onRetryExhaustedThrow((spec, signal) -> signal.failure())
@@ -182,10 +208,11 @@ public class GeminiClientService {
         private RuntimeException buildGeminiException(int statusCode, String body, String apiUrl) {
                 String model = extractModelName(apiUrl);
                 String normalizedBody = body == null ? "" : body.toLowerCase(Locale.ROOT);
+                String errorDetail = extractErrorMessage(body);
 
                 if (statusCode == 429 || normalizedBody.contains("resource_exhausted")) {
                         return new RuntimeException(
-                                        "RESOURCE_EXHAUSTED: Gemini rate/quota limit reached for model '" + model + "'. " + body
+                                        "RESOURCE_EXHAUSTED: Rate/quota limit reached for model '" + model + "'. " + errorDetail
                         );
                 }
 
@@ -194,13 +221,45 @@ public class GeminiClientService {
                                 || normalizedBody.contains("permission_denied")
                                 || normalizedBody.contains("api key")) {
                         return new RuntimeException(
-                                        "PERMISSION_DENIED: Gemini key was rejected for model '" + model + "'. " + body
+                                        "PERMISSION_DENIED: Key rejected for model '" + model + "'. " + errorDetail
+                        );
+                }
+
+                if (statusCode == 500 || statusCode == 502 || statusCode == 503 || statusCode == 504) {
+                        return new RuntimeException(
+                                        "SERVER_ERROR: Gemini returned " + statusCode + " for model '" + model + "'. " + errorDetail
                         );
                 }
 
                 return new RuntimeException(
-                                "Gemini API returned status " + statusCode + " for model '" + model + "': " + body
+                                "Gemini API returned status " + statusCode + " for model '" + model + "': " + errorDetail
                 );
+        }
+
+        /**
+         * Extract the human-readable error message from Gemini's JSON error response.
+         * Falls back to raw body if parsing fails.
+         */
+        private String extractErrorMessage(String body) {
+                if (body == null || body.isBlank()) {
+                        return "(no details)";
+                }
+                try {
+                        // Gemini errors look like: {"error":{"code":429,"message":"...","status":"RESOURCE_EXHAUSTED"}}
+                        int msgStart = body.indexOf("\"message\"");
+                        if (msgStart >= 0) {
+                                int colonPos = body.indexOf(":", msgStart);
+                                int quoteStart = body.indexOf("\"", colonPos + 1);
+                                int quoteEnd = body.indexOf("\"", quoteStart + 1);
+                                if (quoteStart >= 0 && quoteEnd > quoteStart) {
+                                        return body.substring(quoteStart + 1, quoteEnd);
+                                }
+                        }
+                } catch (Exception ignored) {
+                        // Fall through to raw body
+                }
+                // Return truncated body to avoid log flooding
+                return body.length() > 300 ? body.substring(0, 300) + "..." : body;
         }
 
         private boolean isQuotaError(Throwable throwable) {
@@ -229,6 +288,7 @@ public class GeminiClientService {
                                 || normalized.contains("resource_exhausted")
                                 || normalized.contains("too_many_requests")
                                 || normalized.contains("rate limit")
+                                || normalized.contains("server_error")
                                 || normalized.contains("temporarily unavailable")
                                 || normalized.contains("connection reset")
                                 || normalized.contains("connection refused")
@@ -243,6 +303,10 @@ public class GeminiClientService {
                                 || normalized.contains("permission_denied")
                                 || normalized.contains("forbidden")
                                 || normalized.contains("api key")
+                                || normalized.contains("server_error")
+                                || normalized.contains("500")
+                                || normalized.contains("502")
+                                || normalized.contains("503")
                                 || normalized.contains("timeout");
         }
 
@@ -252,7 +316,7 @@ public class GeminiClientService {
                 addUniqueNonBlank(urls, fallbackUrl);
 
                 if (urls.isEmpty()) {
-                        urls.add("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent");
+                        urls.add("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent");
                 }
 
                 return List.copyOf(urls);

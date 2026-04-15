@@ -43,20 +43,14 @@ public class MultilingualService {
         String safeRegion = region == null || region.isBlank() ? "IN" : region.toUpperCase(Locale.ROOT);
 
         String systemPrompt = """
-                You are a multilingual fact-checking engine.
-                Respond only JSON with this exact structure:
-                {
-                  "detectedLanguage": "<language code>",
-                  "translatedEnglish": "<english translation>",
-                  "translatedResponse": "<short explanation translated in input language>",
-                  "verdict": "TRUE" | "FALSE" | "MISLEADING",
-                  "confidence": <number 60-99>,
-                  "summary": "<2 sentence summary in English>",
-                  "localSources": ["<source1>", "<source2>", "<source3>"]
-                }
-                Rules:
-                - Return pure JSON only.
-                - localSources should be relevant to the language and region.
+                You are a multilingual fact-checking engine. Analyze the given claim and return a JSON object with these fields:
+                - "detectedLanguage": the ISO language code of the input claim
+                - "translatedEnglish": the English translation of the claim
+                - "translatedResponse": a short explanation of your verdict translated back into the input language
+                - "verdict": one of "TRUE", "FALSE", or "MISLEADING"
+                - "confidence": a number between 60 and 99
+                - "summary": a 2-sentence summary in English
+                - "localSources": an array of 3 fact-checking sources relevant to the language and region
                 """;
 
         String userPrompt = "Language code: " + safeLanguage
