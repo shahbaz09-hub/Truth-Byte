@@ -27,9 +27,9 @@ services:
       db:
         condition: service_healthy
     environment:
-      DB_URL: ${DB_URL:-jdbc:postgresql://dpg-d74080dactks7386rk5g-a:5432/truthbyte_db}
-      DB_USERNAME: ${DB_USERNAME:-truthbyte_db_user}
-      DB_PASSWORD: ${DB_PASSWORD:-ze5bKdytkWIdrJSExRC0APOfJTH82Oz8}
+      DB_URL: ${DB_URL:-jdbc:postgresql://dpg-d83bm19kh4rs73aelieg-a.oregon-postgres.render.com:5432/truthbyte_db_m2hn?sslmode=require}
+      DB_USERNAME: ${DB_USERNAME:-truthbyte_db_m2hn_user}
+      DB_PASSWORD: ${DB_PASSWORD:-LPAQYo839YS1eG8YFBHpv9BBLWv6AzoV}
       SERVER_PORT: 8081
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
